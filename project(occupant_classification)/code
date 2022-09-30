@@ -1,0 +1,282 @@
+// CONFIG1H
+#pragma config OSC = HS         // Oscillator Selection bits (HS oscillator)
+#pragma config OSCS = OFF       // Oscillator System Clock Switch Enable bit (Oscillator system clock switch option is disabled (main oscillator is source))
+
+// CONFIG2L
+#pragma config PWRT = OFF       // Power-up Timer Enable bit (PWRT disabled)
+#pragma config BOR = OFF        // Brown-out Reset Enable bit (Brown-out Reset disabled)
+#pragma config BORV = 25        // Brown-out Reset Voltage bits (VBOR set to 2.5V)
+
+// CONFIG2H
+#pragma config WDT = OFF        // Watchdog Timer Enable bit (WDT disabled (control is placed on the SWDTEN bit))
+#pragma config WDTPS = 128      // Watchdog Timer Postscale Select bits (1:128)
+
+// CONFIG4L
+#pragma config STVR = OFF       // Stack Full/Underflow Reset Enable bit (Stack Full/Underflow will not cause Reset)
+#pragma config LVP = OFF        // Low-Voltage ICSP Enable bit (Low-Voltage ICSP disabled)
+
+// CONFIG5L
+#pragma config CP0 = OFF        // Code Protection bit (Block 0 (000200-001FFFh) not code protected)
+#pragma config CP1 = OFF        // Code Protection bit (Block 1 (002000-003FFFh) not code protected)
+#pragma config CP2 = OFF        // Code Protection bit (Block 2 (004000-005FFFh) not code protected)
+#pragma config CP3 = OFF        // Code Protection bit (Block 3 (006000-007FFFh) not code protected)
+
+// CONFIG5H
+#pragma config CPB = OFF        // Boot Block Code Protection bit (Boot Block (000000-0001FFh) not code protected)
+#pragma config CPD = OFF        // Data EEPROM Code Protection bit (Data EEPROM not code protected)
+
+// CONFIG6L
+#pragma config WRT0 = OFF       // Write Protection bit (Block 0 (000200-001FFFh) not write protected)
+#pragma config WRT1 = OFF       // Write Protection bit (Block 1 (002000-003FFFh) not write protected)
+#pragma config WRT2 = OFF       // Write Protection bit (Block 2 (004000-005FFFh) not write protected)
+#pragma config WRT3 = OFF       // Write Protection bit (Block 3 (006000-007FFFh) not write protected)
+
+// CONFIG6H
+#pragma config WRTC = OFF       // Configuration Register Write Protection bit (Configuration registers (300000-3000FFh) not write protected)
+#pragma config WRTB = OFF       // Boot Block Write Protection bit (Boot Block (000000-0001FFh) not write protected)
+#pragma config WRTD = OFF       // Data EEPROM Write Protection bit (Data EEPROM not write protected)
+
+// CONFIG7L
+#pragma config EBTR0 = OFF      // Table Read Protection bit (Block 0 (000200-001FFFh) not protected from Table Reads executed in other blocks)
+#pragma config EBTR1 = OFF      // Table Read Protection bit (Block 1 (002000-003FFFh) not protected from Table Reads executed in other blocks)
+#pragma config EBTR2 = OFF      // Table Read Protection bit (Block 2 (004000-005FFFh) not protected from Table Reads executed in other blocks)
+#pragma config EBTR3 = OFF      // Table Read Protection bit (Block 3 (006000-007FFFh) not protected from Table Reads executed in other blocks)
+
+// CONFIG7H
+#pragma config EBTRB = OFF      // Boot Block Table Read Protection bit (Boot Block (000000-0001FFh) not protected from Table Reads executed in other blocks)
+
+// #pragma config statements should precede project file includes.
+
+
+#include <xc.h>
+#define _XTAL_FREQ 20000000//enabling external crystall oscillator frequency
+char seat_belt_status;//declaring character variable
+void can_read();//declaring can_read function prototype
+char air_bag_status;//declaring variable
+char warning_lamp_status;//declaring variable
+char occupant_status;//declaring variable
+char can_rx[11];//declaring array for storing the contents in the buffer             //
+void system_init()//defining system initialization function
+{
+    GIE = 1;     //enable all global interrupts
+    PEIE = 1;    //enable peripheral interrupts
+    RBPU=0;      //enabling pull up register
+}
+void can_init()       //defining  can_init function
+{
+    TRISCbits.RC0=0;   //output for occupant status
+    TRISCbits.RC1=0;   //output for occupant status
+    TRISDbits.RD0=0;    //output for buzzer(seat belt)
+    TRISDbits.RD5=0;    //output for airbag
+    PORTDbits.RD0=0;
+    PORTDbits.RD5=0;
+    PORTC=0x00;          //setting PORTC as 0x00
+    TRISBbits.RB0 = 1;              //Setting the pin as input for switch 1 
+    TRISBbits.RB1 = 1;              //Setting the pin as input for switch 2
+    TRISBbits.RB2 = 0;              //Setting the pin as output that is for transmitter
+    TRISCbits.RC4 = 0;              //status
+    TRISBbits.RB3 = 1; 
+    PORTCbits.RC4 =0;               //condition checking led
+    IPR3bits.RXB0IP=1;              //enabling interrupt priority bit
+    PIE3bits.RXB0IE=1;              //enabling interrupt enable bit
+}
+void set_baud_rate()    //defining set_baud_rate function
+{
+    CANCON = 0x80;                 //setting to configuration mode
+    while(CANSTAT != 0x80);        //checking status of configuration mode
+    BRGCON1 = 0xC1;                //setting baud rate according to value @speed 250kbps
+    BRGCON2 = 0xAE;
+    BRGCON3 = 0x45;
+    CANCON = 0x0E;                //setting to normal mode
+}
+
+void set_mask_filter()//defining mask_filter function
+{
+    RXM0SIDH = 0x00;  //setting mask value
+    RXM0SIDL = 0x00;  //setting mask value
+    RXF0SIDH = 0x00;  //setting filter value
+    RXF0SIDL = 0x00;   //setting filter value
+    RXB0CON=0x00;      //receiver control register
+}
+
+void __interrupt() ISR1 ()   //defining interrupt function
+{
+     if(RX0IF==1)   //checking the value of receiver interrupt 
+    {
+        RX0IF=0;//value of receiver interrupt
+       can_read();//Calling can read function
+    }
+}
+
+
+
+void can_read()//defining can_read function and assigning the contents in the receiver buffer to array
+{
+   
+    CANCON = 0x0E;//setting normal mode
+    can_rx[0] = RXB0D0;
+    can_rx[1] = RXB0D1;
+    can_rx[2] = RXB0D2;
+    can_rx[3] = RXB0D3;
+    can_rx[4] = RXB0D4;
+    can_rx[5] = RXB0D5;
+    can_rx[6] = RXB0D6;
+    can_rx[7] = RXB0D7;
+    can_rx[8] = RXB0DLC;  //assigning DLC to array
+    can_rx[9] = RXB0SIDH;   //assigning  to SIDHL to array
+    can_rx[10] = RXB0SIDL; //assigning  to SIDHL to array
+    RXB0CONbits.RXB0FUL = 0;//assigning RXB0FUL to 0  
+ }
+
+void can_write1(char occupant_status,char warning_lamp_status,char air_bag_status)       //defining can write function
+{
+   
+   __delay_ms(300);
+    CANCON = 0x08;                      //CAN control register for normal mode (for transmitting)
+    CIOCON = 0x20;                      //CAN input/output control register
+    TXB0SIDH = 0x44;       //assigning the id to sidh
+    TXB0SIDL = 0x00;      //assigning the id to sidl
+    TXB0DLC = 0x08;        // setting data length code 
+    TXB0D0 = occupant_status;         //assigning the  occupant_status to buffer0 
+    TXB0D1 = 0x00;
+    TXB0D2 = warning_lamp_status;      //assigning the   warning_lamp_status to buffer2
+    TXB0D3 = 0x00;
+    TXB0D4 = 0x00;
+    TXB0D5 = 0x00;
+    TXB0D6 = 0x00;
+    TXB0D7 = air_bag_status;    //assigning the air_bag_status  to buffer0 
+    TXB0CON = 0x08;   //setting TXB0CON
+}
+char occup_stastus_function(char switch_1,char switch_2) //declaring occup_stastus_function 
+{
+    unsigned value=0x00; //declaring variable
+    if(switch_1==0&&switch_2==1)//checking if it is a child
+        {
+           
+            RC0=1; //assigning RC0 to 1
+            RC1=0;  //assigning RC1 to 0
+             value = 0x01; //assigning occupant status to value
+        }
+    else if(switch_1==1&&switch_2 ==0)//small adult
+        {
+            
+            RC0=0; //assigning RC0 to 0
+            RC1=1;   //assigning RC1 to 1
+            
+        value = 0x02;//writing the occupant status
+        }
+    else if(switch_1==0&&switch_2 ==0)//checking if it is a  adult
+        {
+           
+            RC0=1;   //assigning RC0 to 1
+            RC1=1;    //assigning RC1 to 1
+            
+         value = 0x03;   //writing the occupant status
+        }
+    else   //checking if is a child
+        {
+             
+            RC0=1;   //assigning RC0 to 1
+             RC1=0;   //assigning 0 to RC1
+            
+            __delay_ms(200);
+            RC0=0;    //assigning RC0 to  0
+           __delay_ms(200);
+           
+            value = 0x00;  //writing the occupant status
+        }
+    return value;  //returning  value
+
+}
+char seat_belt_function() //defining seat_belt_function function
+{
+    if(can_rx[9]==0x88&&can_rx[10]==0x00)//checking the message id is 0x440
+    {
+       if((can_rx[2]&0x01)==1)  //if the value in  3rd byte of bit 3'th position is 1 means seat belt is buckled 
+       {  
+           
+          
+          
+           return 0x01; //return seat_belt_status
+       }
+       else //if the value in bit 0'th position is 0 means seat belt is not  buckled 
+       {
+         
+           return 0x00;  //return seat_belt_status
+       
+       }
+       
+    
+    }
+
+}
+
+
+
+char air_bag_function(char occupant_status,char seat_belt_status)//defining air_bag_function function
+{
+    if((occupant_status>0x01&&occupant_status<0x04)&&( seat_belt_status==0x01))//checking if the passenger is small adult or adult and if the passenger bucked the seat belt
+    {
+       air_bag_status=0x01;//enabling air bag if the passenger if the condition is true
+       RD5=0; //turning off airbag led if airbag enabled
+       
+    }
+    else
+    {
+        RD5=1;  //turning on airbag led if airbag desabled
+    air_bag_status=0x00;//disable  air bag if the condition is false
+    }
+        
+
+
+}
+
+char warning_lamp_function(char air_bag_status,char occupant_status)//defining warning_lamp_function function
+{
+    if(air_bag_status==0x01&& (occupant_status >0x01))//checking if the airbag  is enabled  and checking if the occupant is adult or small_adult 
+    {
+    warning_lamp_status =0x00; //turning of  warning lamp
+    }
+    else if(occupant_status == 0x00) //if occupant is empty
+    {
+    warning_lamp_status =0x00;  //turning of  warning lamp
+    }
+    else //if conditions are false
+    {
+    warning_lamp_status =0x01; //turning on  warning lamp
+    }
+    
+
+}
+
+int main()    //defining main function
+{
+   // RBPU=0;//enabling pull up register
+    system_init();//calling function
+    can_init();//calling function
+    set_baud_rate();//calling function
+    set_mask_filter();//calling function
+    while(1)
+    {
+      
+        
+        occupant_status = occup_stastus_function(RB0,RB1);//calling occupant_status_function and result is stored in occupant_status 
+        seat_belt_status = seat_belt_function();//calling seat_belt_status _function and result is stored in  seat_belt_status
+        air_bag_status=air_bag_function(occupant_status,seat_belt_status);//calling air_bag _function and result is stored in  air_bag_status
+        warning_lamp_status=warning_lamp_function(air_bag_status,occupant_status);//calling warning_lamp_function and result is stored in warning_lamp_status
+        if((occupant_status >0x00)&&(seat_belt_status!=0x01))//checking condition for warning of seat belt
+        {
+            RD0=1;//enable warning buzzer
+        }
+        else
+        {
+            RD0=0;//disable warning buzzer
+            
+        }
+        
+        can_write1(occupant_status,warning_lamp_status,air_bag_status);//calling can_write function for transmitting the status of occupant_status,warning_lamp_status,air_bag_status
+        
+    }
+    
+    
+}
